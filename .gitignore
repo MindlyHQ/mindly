@@ -18,4 +18,5 @@ logs/
 # Build
 dist/
 build/
-.expo/
+.expo/"Mindly API/" 
+"*.bruno.json" 
