@@ -1,0 +1,21 @@
+```gitignore
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build
+dist/
+build/
+.expo/
