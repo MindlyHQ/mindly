@@ -14,7 +14,7 @@ import axios from 'axios';
 
 // ВАЖНО: Для Android эмулятора используйте 'http://10.0.2.2:8080'
 // Для iOS симулятора или реального устройства: 'http://localhost:8080' или ваш локальный IP
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'http://192.168.0.101:8081';
 
 interface RegisterRequest {
     email: string;

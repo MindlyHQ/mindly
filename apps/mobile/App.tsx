@@ -1,36 +1,56 @@
-// App.tsx - С ЯВНОЙ РЕГИСТРАЦИЕЙ КОМПОНЕНТА
 import React from 'react';
-import { AppRegistry, View, Text } from 'react-native';
+import { AppRegistry } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// 1. Определяем компонент
+// Импортируем экраны
+import FeedScreen from './src/screens/FeedScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+
+// Создаём навигатор
+const Stack = createNativeStackNavigator();
+
+// Главный компонент приложения
 function App() {
   return (
-    <View style={{
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: '#4a6fa5'
-    }}>
-      <Text style={{
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: 20
-      }}>
-        🧠 Mindly
-      </Text>
-      <Text style={{
-        fontSize: 18,
-        color: '#e2e8f0'
-      }}>
-        День 2: Регистрация работает!
-      </Text>
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="Feed">
+        {/* Экран ленты видео (главный) */}
+        <Stack.Screen
+          name="Feed"
+          component={FeedScreen}
+          options={{
+            title: '🎓 LearnStream',
+            headerStyle: {
+              backgroundColor: '#4a6fa5',
+            },
+            headerTintColor: 'white',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+              fontSize: 20,
+            },
+          }}
+        />
+
+        {/* Экран регистрации */}
+        <Stack.Screen
+          name="Register"
+          component={RegisterScreen}
+          options={{
+            title: 'Регистрация',
+            headerStyle: {
+              backgroundColor: '#4a6fa5',
+            },
+            headerTintColor: 'white',
+          }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
-// 2. ✅ КРИТИЧЕСКИ ВАЖНО: Регистрируем компонент
+// ✅ КРИТИЧЕСКИ ВАЖНО: Регистрируем компонент
 AppRegistry.registerComponent('main', () => App);
 
-// 3. Экспортируем компонент
+// Экспортируем компонент
 export default App;
