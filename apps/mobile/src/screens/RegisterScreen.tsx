@@ -11,10 +11,11 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import axios from 'axios';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 // ВАЖНО: Для Android эмулятора используйте 'http://10.0.2.2:8080'
 // Для iOS симулятора или реального устройства: 'http://localhost:8080' или ваш локальный IP
-const API_BASE_URL = 'http://192.168.0.101:8081';
+const API_BASE_URL = 'http://192.168.0.160:8081';
 
 interface RegisterRequest {
     email: string;
@@ -23,19 +24,7 @@ interface RegisterRequest {
     full_name?: string;
 }
 
-interface User {
-    id: string;
-    email: string;
-    username: string;
-    full_name?: string;
-    score: number;
-    current_streak: number;
-    best_streak: number;
-    created_at: string;
-    updated_at: string;
-}
-
-export default function RegisterScreen() {
+export default function RegisterScreen({ navigation }: any) {
     const [formData, setFormData] = useState<RegisterRequest>({
         email: '',
         username: '',
@@ -43,8 +32,10 @@ export default function RegisterScreen() {
         full_name: '',
     });
     const [loading, setLoading] = useState(false);
-    const [registeredUser, setRegisteredUser] = useState<User | null>(null);
     const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+    // Добавляем хук для аутентификации
+    const { login } = useAuth();
 
     // Проверка связи с сервером при загрузке экрана
     React.useEffect(() => {
@@ -110,13 +101,20 @@ export default function RegisterScreen() {
             console.log('✅ Ответ сервера:', response.data);
 
             if (response.data.status === 'success') {
-                const user: User = response.data.data;
-                setRegisteredUser(user);
+                const user = response.data.data;
+
+                // ВОТ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Сохраняем пользователя в контекст
+                await login(user);
 
                 Alert.alert(
                     '🎉 Успешная регистрация!',
-                    `Пользователь ${user.username} создан!\nID: ${user.id.substring(0, 8)}...`,
-                    [{ text: 'OK' }]
+                    `Пользователь ${user.username} создан и авторизован!`,
+                    [
+                        {
+                            text: 'Перейти в ленту',
+                            onPress: () => navigation.navigate('Feed')
+                        }
+                    ]
                 );
 
                 // Очистка формы
@@ -126,6 +124,10 @@ export default function RegisterScreen() {
                     password: '',
                     full_name: '',
                 });
+
+                // Автоматический переход на главный экран
+                // navigation.navigate('Feed'); // Раскомментируйте, если хотите авто-переход
+
             } else {
                 throw new Error(response.data.error || 'Неизвестная ошибка сервера');
             }
@@ -222,7 +224,7 @@ export default function RegisterScreen() {
                     ) : (
                         <>
                             <TouchableOpacity style={styles.primaryButton} onPress={handleRegister}>
-                                <Text style={styles.buttonText}>Зарегистрироваться</Text>
+                                <Text style={styles.buttonText}>Зарегистрироваться и войти</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity style={styles.secondaryButton} onPress={handleTestUser}>
@@ -232,46 +234,28 @@ export default function RegisterScreen() {
                             <TouchableOpacity style={styles.secondaryButton} onPress={checkServerHealth}>
                                 <Text style={styles.secondaryButtonText}>Проверить соединение с сервером</Text>
                             </TouchableOpacity>
+
+                            {/* Кнопка для перехода в ленту */}
+                            <TouchableOpacity
+                                style={styles.linkButton}
+                                onPress={() => navigation.navigate('Feed')}
+                            >
+                                <Text style={styles.linkButtonText}>← Вернуться в ленту</Text>
+                            </TouchableOpacity>
                         </>
                     )}
                 </View>
             </View>
 
-            {/* Карточка зарегистрированного пользователя */}
-            {registeredUser && (
-                <View style={[styles.card, styles.successCard]}>
-                    <Text style={styles.sectionTitle}>✅ Зарегистрированный пользователь</Text>
-                    <View style={styles.userInfo}>
-                        <Text style={styles.userInfoLabel}>ID:</Text>
-                        <Text style={styles.userInfoValue}>{registeredUser.id.substring(0, 16)}...</Text>
-
-                        <Text style={styles.userInfoLabel}>Email:</Text>
-                        <Text style={styles.userInfoValue}>{registeredUser.email}</Text>
-
-                        <Text style={styles.userInfoLabel}>Username:</Text>
-                        <Text style={styles.userInfoValue}>{registeredUser.username}</Text>
-
-                        <Text style={styles.userInfoLabel}>Score:</Text>
-                        <Text style={styles.userInfoValue}>{registeredUser.score}</Text>
-
-                        <Text style={styles.userInfoLabel}>Registered:</Text>
-                        <Text style={styles.userInfoValue}>
-                            {new Date(registeredUser.created_at).toLocaleDateString('ru-RU')}
-                        </Text>
-                    </View>
-                </View>
-            )}
-
             {/* Информационная карточка */}
             <View style={styles.infoCard}>
-                <Text style={styles.infoTitle}>ℹ️ Информация о Дне 2</Text>
+                <Text style={styles.infoTitle}>ℹ️ Информация о системе аутентификации</Text>
                 <Text style={styles.infoText}>
-                    • Реализован полный цикл регистрации{'\n'}
-                    • Go API + PostgreSQL + CORS{'\n'}
-                    • React Native с TypeScript{'\n'}
-                    • Валидация формы на клиенте{'\n'}
-                    • Обработка ошибок сети{'\n'}
-                    • Статус соединения в реальном времени
+                    • После регистрации происходит автоматический вход{'\n'}
+                    • Данные пользователя сохраняются локально{'\n'}
+                    • Можно войти/выйти в любое время{'\n'}
+                    • FAB-кнопка ведет на Профиль для авторизованных{'\n'}
+                    • Для неавторизованных — на Регистрацию
                 </Text>
             </View>
         </ScrollView>
@@ -328,10 +312,6 @@ const styles = StyleSheet.create({
         shadowRadius: 6,
         elevation: 3,
     },
-    successCard: {
-        borderLeftWidth: 4,
-        borderLeftColor: '#48bb78',
-    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
@@ -373,17 +353,17 @@ const styles = StyleSheet.create({
         color: '#4a5568',
         fontSize: 14,
     },
-    userInfo: {
-        marginTop: 10,
+    linkButton: {
+        backgroundColor: 'transparent',
+        borderRadius: 8,
+        padding: 12,
+        alignItems: 'center',
+        marginTop: 5,
     },
-    userInfoLabel: {
-        fontWeight: '600',
-        color: '#4a5568',
-        marginTop: 8,
-    },
-    userInfoValue: {
-        color: '#2d3748',
-        marginBottom: 4,
+    linkButtonText: {
+        color: '#4a6fa5',
+        fontSize: 14,
+        textDecorationLine: 'underline',
     },
     infoCard: {
         backgroundColor: '#ebf8ff',

@@ -2,13 +2,31 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 )
+
+func safeShortID(id string, length int) string {
+	if id == "" {
+		return "НЕТ ID"
+	}
+	if len(id) >= length {
+		return id[:length] + "..."
+	}
+	return id
+}
+
+func generatePasswordHash(password string) string {
+	hash := md5.Sum([]byte(password))
+	return hex.EncodeToString(hash[:])
+}
 
 func main() {
 	fmt.Println("🌱 Загрузка тестовых данных для Mindly LearnStream...")
@@ -33,26 +51,88 @@ func main() {
 	// 1. ПРОВЕРЯЕМ И СОЗДАЕМ ПОЛЬЗОВАТЕЛЯ (если нет)
 	fmt.Println("\n1. Работа с пользователем...")
 
-	var userID int
+	var userID string
 
-	// Проверяем, есть ли пользователи
-	err = db.QueryRowContext(ctx, "SELECT id FROM users LIMIT 1").Scan(&userID)
+	// Проверяем существующих пользователей
+	err = db.QueryRowContext(ctx, "SELECT id::text FROM users LIMIT 1").Scan(&userID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Создаём нового пользователя (только email и created_at, как в твоей схеме)
+			// Создаём нового пользователя с ВСЕМИ обязательными полями
 			fmt.Println("   👤 Создаём нового пользователя...")
+
+			// Генерируем хеш пароля
+			passwordHash := generatePasswordHash("mindly123")
+			currentTime := time.Now()
+
+			// Пытаемся создать пользователя со всеми обязательными полями
 			err = db.QueryRowContext(ctx,
-				"INSERT INTO users (email) VALUES ($1) RETURNING id",
+				`INSERT INTO users (
+					email, 
+					username, 
+					password_hash, 
+					full_name,
+					score,
+					current_streak,
+					best_streak,
+					created_at,
+					updated_at
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+				RETURNING id::text`,
 				"demo@mindly.ru",
+				"demo_user",
+				passwordHash,
+				"Демо Пользователь",
+				0, // score
+				0, // current_streak
+				0, // best_streak
+				currentTime,
+				currentTime,
 			).Scan(&userID)
 
 			if err != nil {
-				log.Printf("❌ Не удалось создать пользователя: %v", err)
-				// Пробуем создать с другим email
-				db.QueryRowContext(ctx,
-					"INSERT INTO users (email) VALUES ($1) RETURNING id",
+				log.Printf("   ⚠️ Не удалось создать первого пользователя: %v", err)
+
+				// Пробуем минимальный набор полей
+				err = db.QueryRowContext(ctx,
+					`INSERT INTO users (
+						email, 
+						username, 
+						password_hash,
+						created_at,
+						updated_at
+					) VALUES ($1, $2, $3, $4, $5) 
+					RETURNING id::text`,
 					"test@mindly.ru",
+					"test_user",
+					generatePasswordHash("test123"),
+					currentTime,
+					currentTime,
 				).Scan(&userID)
+
+				if err != nil {
+					log.Printf("❌ Не удалось создать пользователя: %v", err)
+
+					// Ещё одна попытка с другим именем пользователя
+					err = db.QueryRowContext(ctx,
+						`INSERT INTO users (
+							email, 
+							username, 
+							password_hash,
+							created_at,
+							updated_at
+						) VALUES ($1, $2, $3, $4, $5) 
+						RETURNING id::text`,
+						"admin@mindly.ru",
+						"admin",
+						generatePasswordHash("admin123"),
+						currentTime,
+						currentTime,
+					).Scan(&userID)
+
+					if err != nil {
+						log.Fatalf("❌ Все попытки создать пользователя не удались: %v", err)
+					}
+				}
 			}
 		} else {
 			log.Printf("⚠️ Ошибка при проверке пользователей: %v", err)
@@ -60,7 +140,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("   👤 Используем User ID: %d\n", userID)
+	fmt.Printf("   👤 Используем User ID: %s\n", safeShortID(userID, 8))
 
 	// 2. СОЗДАЕМ АВТОРА (эксперта)
 	fmt.Println("\n2. Создаём автора-эксперта...")
@@ -68,26 +148,65 @@ func main() {
 	var authorID string
 
 	// Проверяем, есть ли уже авторы
-	err = db.QueryRowContext(ctx, "SELECT id FROM authors LIMIT 1").Scan(&authorID)
+	err = db.QueryRowContext(ctx, "SELECT id::text FROM authors LIMIT 1").Scan(&authorID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Создаём нового автора
 			authorQuery := `
-                INSERT INTO authors (user_id, full_name, expertise_area, trust_tier) 
-                VALUES ($1, $2, $3, $4)
-                RETURNING id
+                INSERT INTO authors (
+					user_id, 
+					full_name, 
+					expertise_area, 
+					trust_tier,
+					bio,
+					created_at,
+					updated_at
+				) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id::text
             `
 
+			currentTime := time.Now()
 			err = db.QueryRowContext(ctx, authorQuery,
 				userID,
 				"Дмитрий Программист",
 				"IT",
 				"gold",
+				"Опытный разработчик с 10-летним стажем. Специализируется на Go, микросервисах и DevOps.",
+				currentTime,
+				currentTime,
 			).Scan(&authorID)
 
 			if err != nil {
 				log.Printf("❌ Не удалось создать автора: %v", err)
-				return
+
+				// Пробуем без optional полей
+				db.QueryRowContext(ctx, `
+                    INSERT INTO authors (
+						user_id, 
+						full_name, 
+						expertise_area
+					) VALUES ($1, $2, $3)
+                    RETURNING id::text
+                `,
+					userID,
+					"Дмитрий Программист",
+					"IT",
+				).Scan(&authorID)
+
+				if err != nil {
+					log.Printf("❌ Вторая попытка создать автора тоже не удалась: %v", err)
+
+					// Посмотрим структуру таблицы authors
+					var authorColumns string
+					db.QueryRowContext(ctx,
+						`SELECT string_agg(column_name || ' ' || 
+							CASE WHEN is_nullable = 'NO' THEN 'NOT NULL' ELSE '' END, ', ') 
+						 FROM information_schema.columns WHERE table_name = 'authors'`).Scan(&authorColumns)
+					if authorColumns != "" {
+						log.Printf("   Структура таблицы authors: %s\n", authorColumns)
+					}
+					return
+				}
 			}
 		} else {
 			log.Printf("⚠️ Ошибка при проверке авторов: %v", err)
@@ -95,7 +214,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("   📝 Используем Author ID: %s\n", authorID)
+	fmt.Printf("   📝 Используем Author ID: %s\n", safeShortID(authorID, 8))
 
 	// 3. ДОБАВЛЯЕМ ТЕСТОВЫЕ ВИДЕО
 	fmt.Println("\n3. Добавляем тестовые видео...")
@@ -153,13 +272,23 @@ func main() {
 
 	videosAdded := 0
 	videoIDs := []string{}
+	currentTime := time.Now()
 
 	for i, video := range testVideos {
 		var videoID string
 		videoQuery := `
-            INSERT INTO videos (author_id, title, description, video_url, thumbnail_url, duration_sec, tags) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id
+            INSERT INTO videos (
+				author_id, 
+				title, 
+				description, 
+				video_url, 
+				thumbnail_url, 
+				duration_sec, 
+				tags,
+				created_at,
+				updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id::text
         `
 
 		// Преобразуем массив тегов в формат PostgreSQL
@@ -173,15 +302,26 @@ func main() {
 			video.thumbnailURL,
 			video.durationSec,
 			tagsStr,
+			currentTime,
+			currentTime,
 		).Scan(&videoID)
 
 		if err != nil {
 			log.Printf("⚠️ Ошибка при добавлении видео '%s': %v", video.title, err)
+
 			// Пробуем без thumbnail_url
-			db.QueryRowContext(ctx, `
-                INSERT INTO videos (author_id, title, description, video_url, duration_sec, tags) 
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id
+			err = db.QueryRowContext(ctx, `
+                INSERT INTO videos (
+					author_id, 
+					title, 
+					description, 
+					video_url, 
+					duration_sec, 
+					tags,
+					created_at,
+					updated_at
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id::text
             `,
 				authorID,
 				video.title,
@@ -189,37 +329,78 @@ func main() {
 				video.videoURL,
 				video.durationSec,
 				tagsStr,
+				currentTime,
+				currentTime,
 			).Scan(&videoID)
+
+			if err != nil {
+				log.Printf("❌ Вторая попытка для видео '%s' тоже не удалась: %v", video.title, err)
+
+				// Посмотрим структуру таблицы videos
+				var videoColumns string
+				db.QueryRowContext(ctx,
+					`SELECT string_agg(column_name || ' ' || 
+						CASE WHEN is_nullable = 'NO' THEN 'NOT NULL' ELSE '' END, ', ') 
+					 FROM information_schema.columns WHERE table_name = 'videos'`).Scan(&videoColumns)
+				if videoColumns != "" {
+					log.Printf("   Структура таблицы videos: %s\n", videoColumns)
+				}
+				continue
+			}
 		}
 
 		if videoID != "" {
 			videosAdded++
 			videoIDs = append(videoIDs, videoID)
-			fmt.Printf("   ✅ Видео %d: %s (ID: %s)\n", i+1, video.title, videoID[:8])
+			fmt.Printf("   ✅ Видео %d: %s (ID: %s)\n", i+1, video.title, safeShortID(videoID, 8))
 		}
 	}
 
-	// 4. ДОБАВЛЯЕМ ТЕСТЫ К ВИДЕО
-	fmt.Println("\n4. Добавляем тесты к видео...")
+	// 4. ДОБАВЛЯЕМ ТЕСТЫ К ВИДЕО (если есть таблица quizzes)
+	fmt.Println("\n4. Проверяем таблицу quizzes...")
+
+	var tableExists bool
+	db.QueryRowContext(ctx,
+		"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'quizzes')").Scan(&tableExists)
 
 	testsAdded := 0
-	for _, videoID := range videoIDs {
-		quizQuery := `
-            INSERT INTO quizzes (video_id, question, correct_answer, wrong_answers) 
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (video_id) DO NOTHING
-        `
+	if tableExists && len(videoIDs) > 0 {
+		fmt.Println("   Добавляем тесты к видео...")
 
-		_, err := db.ExecContext(ctx, quizQuery,
-			videoID,
-			"Был ли этот материал полезен?",
-			"Да, узнал что-то новое",
-			`{"Уже знал это", "Слишком сложно", "Не по теме"}`,
-		)
+		for _, videoID := range videoIDs {
+			if videoID == "" {
+				continue
+			}
 
-		if err == nil {
-			testsAdded++
+			quizQuery := `
+				INSERT INTO quizzes (
+					video_id, 
+					question, 
+					correct_answer, 
+					wrong_answers,
+					created_at,
+					updated_at
+				) VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (video_id) DO NOTHING
+			`
+
+			_, err := db.ExecContext(ctx, quizQuery,
+				videoID,
+				"Был ли этот материал полезен?",
+				"Да, узнал что-то новое",
+				`{"Уже знал это", "Слишком сложно", "Не по теме"}`,
+				currentTime,
+				currentTime,
+			)
+
+			if err != nil {
+				log.Printf("⚠️ Ошибка при добавлении теста для видео %s: %v", safeShortID(videoID, 8), err)
+			} else {
+				testsAdded++
+			}
 		}
+	} else {
+		fmt.Println("   ⚠️ Таблица quizzes не существует или нет видео")
 	}
 
 	// 5. ФИНАЛЬНАЯ ПРОВЕРКА
@@ -237,8 +418,27 @@ func main() {
 		fmt.Printf("\n🎉 УСПЕХ! Загружено %d видео и %d тестов.\n", videosAdded, testsAdded)
 		fmt.Println("🔗 Проверьте API: http://localhost:8081/api/feed?limit=5")
 		fmt.Println("📺 Пример видео URL: https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
+
+		// Дополнительная информация о пользователе
+		var userEmail, userName string
+		db.QueryRowContext(ctx, "SELECT email, username FROM users WHERE id = $1", userID).Scan(&userEmail, &userName)
+		fmt.Printf("👤 Тестовый пользователь: %s (%s)\n", userName, userEmail)
+		fmt.Println("🔐 Пароль: mindly123 (или test123/admin123 в зависимости от созданного)")
 	} else {
-		fmt.Println("\n⚠️ Видео не были добавлены. Проверьте структуру таблиц.")
-		fmt.Println("   Выполните: \\dt в psql для проверки таблиц")
+		fmt.Println("\n⚠️ Видео не были добавлены. Возможные причины:")
+		fmt.Println("   • Проверьте структуру таблицы videos")
+		fmt.Println("   • Проверьте подключение к БД")
+		fmt.Println("   • Убедитесь, что author_id корректен")
+
+		// Проверим, есть ли таблица videos
+		var videosTableExists bool
+		db.QueryRowContext(ctx,
+			"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'videos')").Scan(&videosTableExists)
+
+		if !videosTableExists {
+			fmt.Println("   ❌ Таблица videos не существует!")
+		} else {
+			fmt.Println("   ✅ Таблица videos существует")
+		}
 	}
 }

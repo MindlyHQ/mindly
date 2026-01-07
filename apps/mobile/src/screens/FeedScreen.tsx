@@ -10,11 +10,12 @@ import {
     TouchableOpacity,
     Platform
 } from 'react-native';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 // ⚠️ ВАЖНО: ПОДСТАВЬ СВОЙ IP КОМПЬЮТЕРА СЮДА!
-const COMPUTER_IP = '192.168.0.101'; // ← ИЗМЕНИ ЭТУ СТРОКУ! Используй IP из ipconfig
+const COMPUTER_IP = '192.168.0.160'; // ← ИЗМЕНИ ЭТУ СТРОКУ! Используй IP из ipconfig
 
 // УНИВЕРСАЛЬНОЕ РЕШЕНИЕ ДЛЯ РЕАЛЬНОГО ТЕЛЕФОНА
 const getApiUrl = () => {
@@ -24,7 +25,6 @@ const getApiUrl = () => {
     }
     return 'https://api.твой-домен.com/api/feed'; // Для продакшена
 };
-
 
 const API_URL = getApiUrl();
 
@@ -48,6 +48,7 @@ export default function FeedScreen({ navigation }: any) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState(0);
+    const { user } = useAuth(); // Получаем данные пользователя
 
     useEffect(() => {
         loadVideos();
@@ -105,8 +106,13 @@ export default function FeedScreen({ navigation }: any) {
         }
     };
 
-    const navigateToRegister = () => {
-        navigation.navigate('Register');
+    // Изменено: теперь ведет на профиль ИЛИ регистрацию
+    const navigateToProfileOrRegister = () => {
+        if (user) {
+            navigation.navigate('Profile');
+        } else {
+            navigation.navigate('Register');
+        }
     };
 
     const retryWithDifferentUrl = () => {
@@ -129,6 +135,16 @@ export default function FeedScreen({ navigation }: any) {
             `Если видите JSON с видео — API работает.\n` +
             `Если нет — проверьте Go-сервер.`
         );
+    };
+
+    // Функция для лайков (только для авторизованных)
+    const handleLikePress = (videoId: string) => {
+        if (!user) {
+            alert('Войдите в аккаунт, чтобы ставить лайки');
+            return;
+        }
+        // TODO: Добавить логику лайков с user.id
+        console.log(`Пользователь ${user.id} лайкнул видео ${videoId}`);
     };
 
     if (loading) {
@@ -167,8 +183,9 @@ export default function FeedScreen({ navigation }: any) {
                         <Text style={styles.buttonText}>🌐 Проверить API в браузере</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.button, styles.registerButton]} onPress={navigateToRegister}>
-                        <Text style={styles.buttonText}>👤 Перейти к регистрации</Text>
+                    {/* Изменено: теперь показывает "Профиль" или "Регистрация" */}
+                    <TouchableOpacity style={[styles.button, styles.registerButton]} onPress={navigateToProfileOrRegister}>
+                        <Text style={styles.buttonText}>{user ? '👤 Профиль' : '👤 Регистрация'}</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -214,6 +231,16 @@ export default function FeedScreen({ navigation }: any) {
                 </View>
 
                 <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
+
+                {/* Кнопка лайка (показывает статус авторизации) */}
+                <TouchableOpacity
+                    style={styles.likeButton}
+                    onPress={() => handleLikePress(item.id)}
+                >
+                    <Text style={styles.likeText}>
+                        {user ? '❤️ Лайк' : '🔒 Войдите, чтобы лайкнуть'}
+                    </Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -224,6 +251,12 @@ export default function FeedScreen({ navigation }: any) {
                 <Text style={styles.headerTitle}>🎓 LearnStream</Text>
                 <Text style={styles.headerSubtitle}>Образовательные видео в формате TikTok</Text>
                 <Text style={styles.urlDisplay}>API: {API_URL.replace('http://', '')}</Text>
+                {/* Показываем статус пользователя в заголовке */}
+                {user && (
+                    <Text style={styles.userStatus}>
+                        👤 Вы вошли как {user.username}
+                    </Text>
+                )}
             </View>
 
             <FlatList
@@ -244,13 +277,18 @@ export default function FeedScreen({ navigation }: any) {
                 }
             />
 
-            <TouchableOpacity style={styles.fab} onPress={navigateToRegister}>
-                <Text style={styles.fabText}>👤</Text>
+            {/* Изменено: теперь показывает разную иконку в зависимости от авторизации */}
+            <TouchableOpacity style={styles.fab} onPress={navigateToProfileOrRegister}>
+                <Text style={styles.fabText}>{user ? '👤' : '📝'}</Text>
             </TouchableOpacity>
 
             <View style={styles.debugInfo}>
                 <Text style={styles.debugText}>📱 {Platform.OS.toUpperCase()}</Text>
                 <Text style={styles.debugText}>🎬 {videos.length} видео</Text>
+                {/* Добавляем информацию о пользователе в debug */}
+                <Text style={styles.debugText}>
+                    {user ? `👤 ${user.username.substring(0, 8)}...` : '👤 Не авторизован'}
+                </Text>
             </View>
         </View>
     );
@@ -292,6 +330,12 @@ const styles = StyleSheet.create({
         fontSize: 10,
         color: '#a0c4ff',
         fontFamily: 'monospace',
+    },
+    userStatus: {
+        fontSize: 12,
+        color: '#cbd5e0',
+        marginTop: 5,
+        fontStyle: 'italic',
     },
     loadingText: {
         marginTop: 15,
@@ -479,6 +523,21 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#4a5568',
         lineHeight: 20,
+        marginBottom: 10,
+    },
+    likeButton: {
+        backgroundColor: '#f7fafc',
+        paddingVertical: 8,
+        paddingHorizontal: 15,
+        borderRadius: 20,
+        alignSelf: 'flex-start',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    likeText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#4a5568',
     },
     fab: {
         position: 'absolute',

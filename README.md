@@ -56,3 +56,11 @@ func main() {
 1:C:\Users\denis\Documents\Projects\mindly\services\api>go run ./cmd/api/main.go
 2:PS C:\Users\denis\Documents\Projects\mindly\apps\mobile> npm start
 3:PS C:\Users\denis\Documents\Projects\mindly\services\api> go run ./scripts/seed.go
+
+PostgreSQL: 5432
+
+Redis: 6379
+
+API сервер: 8081
+
+Metro Bundler: 8082
