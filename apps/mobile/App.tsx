@@ -25,7 +25,7 @@ function App() {
             name="Feed"
             component={FeedScreen}
             options={{
-              title: '🎓 LearnStream',
+              title: 'Mindly',
               headerStyle: {
                 backgroundColor: '#4a6fa5',
               },
